@@ -2,6 +2,8 @@
 
 A small LLM art creator. Enter a title, choose a layer count and canvas size, then export PNG, SVG, or a layered JSON project.
 
+![Bicart artwork preview](screenshot.png)
+
 ## Run
 
 Dependencies are already installed in this checkout. Create your private configuration:
