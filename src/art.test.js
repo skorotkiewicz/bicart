@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { drawArt, parseLayer, validateSettings } from './art.js'
+import { canContinueArt, drawArt, parseLayer, validateSettings } from './art.js'
+import { exportProject, importProject } from './files.js'
 import { generateArt } from './llm.js'
 import { layerSchema } from './layer-schema.js'
 
@@ -294,4 +295,38 @@ test('stopping a resumed run prevents later requests and preserves saved layers'
   })), { name: 'AbortError' })
   assert.equal(server.requests.length, 1)
   assert.equal(previousLayers.length, 8)
+})
+
+test('continuation requires a larger layer count and the same title and canvas', () => {
+  const art = { title: settings.title, width: settings.width, height: settings.height, total: 6, layers: savedLayers().slice(0, 6) }
+  const draft = { ...settings, layers: 8 }
+  assert.equal(canContinueArt(art, draft), true)
+  assert.equal(canContinueArt(art, { title: `  ${art.title}  `, width: '640', height: '480', layers: '8' }), true)
+  assert.equal(canContinueArt({ ...art, total: 10 }, draft), true)
+  assert.equal(canContinueArt(null, draft), false)
+  assert.equal(canContinueArt(art, null), false)
+  for (const change of [
+    { layers: 6 }, { layers: 5 }, { layers: '' }, { layers: 7.5 }, { layers: 31 },
+    { title: 'A different picture' }, { title: null }, { width: 1024 }, { height: 1024 },
+  ]) assert.equal(canContinueArt(art, { ...draft, ...change }), false)
+})
+
+test('an imported six-layer project extends to eight without changing saved layers or visibility', async () => {
+  const source = { title: settings.title, width: settings.width, height: settings.height, total: 6, layers: savedLayers().slice(0, 6) }
+  const project = importProject(exportProject(source, [1, 4]))
+  const original = exportProject(project.art, project.hiddenLayers)
+  const nextSettings = { title: project.art.title, width: project.art.width, height: project.art.height, layers: 8 }
+  assert.equal(canContinueArt(project.art, nextSettings), true)
+  const server = mockServer([second, second])
+  const snapshots = []
+  const result = await generateArt(options(server, {
+    settings: nextSettings, modelId: 'configured-model', previousLayers: project.art.layers,
+    onLayer: (art) => snapshots.push(art),
+  }))
+  assert.deepEqual(server.requests.map(requestPrompt).map((prompt) => prompt.currentLayer), [7, 8])
+  assert.deepEqual(snapshots.map((art) => [art.layers.length, art.total]), [[7, 8], [8, 8]])
+  assert.deepEqual(requestPrompt(server.requests[0]).previousLayers, project.art.layers)
+  assert.deepEqual(result.layers.slice(0, 6), project.art.layers)
+  assert.equal(exportProject(project.art, project.hiddenLayers), original)
+  assert.equal(canContinueArt(snapshots[1], nextSettings), false)
 })

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { drawArt, validateSettings } from './art.js'
+import { canContinueArt, drawArt, validateSettings } from './art.js'
 import { createSVG, exportProject, importProject, MAX_PROJECT_BYTES } from './files.js'
 import { generateArt } from './llm.js'
 import './App.css'
@@ -17,6 +17,8 @@ function App() {
   const [progress, setProgress] = useState({ completed: 0, total: 10 })
   const [status, setStatus] = useState('Ready when you are.')
   const [error, setError] = useState('')
+  const [draftSettings, setDraftSettings] = useState(null)
+  const canContinue = canContinueArt(art, draftSettings)
   const retry = progress.retry ?? (art && art.layers.length < art.total && error.startsWith(`Layer ${art.layers.length + 1}:`)
     ? {
       settings: { title: art.title, layers: art.total, width: art.width, height: art.height },
@@ -51,7 +53,7 @@ function App() {
         width: Number(form.get('width')),
         height: Number(form.get('height')),
       })
-      await runGeneration(settings)
+      await runGeneration(settings, canContinueArt(art, settings) ? art.layers : [])
     } catch (cause) {
       if (retry && !progress.retry) setProgress({ ...progress, retry })
       setError(cause.message)
@@ -61,6 +63,7 @@ function App() {
   async function runGeneration(settings, previousLayers = [], retryFeedback = '') {
     if (requestRef.current || importing) return
     for (const [name, value] of Object.entries(settings)) formRef.current.elements.namedItem(name).value = value
+    setDraftSettings(settings)
     const controller = new AbortController()
     requestRef.current = controller
     setBusy(true)
@@ -160,6 +163,7 @@ function App() {
       for (const [name, value] of Object.entries({ title: project.art.title, layers: project.art.total, width: project.art.width, height: project.art.height })) {
         formRef.current.elements.namedItem(name).value = value
       }
+      setDraftSettings({ title: project.art.title, layers: project.art.total, width: project.art.width, height: project.art.height })
       setStatus('Imported JSON project.')
     } catch (cause) {
       setError(`JSON import failed: ${cause.message}`)
@@ -182,7 +186,7 @@ function App() {
           <h1>Give it a title.<br />See what unfolds.</h1>
           <p className="intro">Your LLM draws each layer, from the first color to the final detail.</p>
 
-          <form ref={formRef} onSubmit={createArt}>
+          <form ref={formRef} onSubmit={createArt} onInput={(event) => setDraftSettings(Object.fromEntries(new FormData(event.currentTarget)))}>
             <fieldset disabled={busy || importing}>
               <label htmlFor="title">Art title</label>
               <input id="title" name="title" placeholder="A small cabin under the northern lights" required maxLength={200} autoComplete="off" />
@@ -200,7 +204,7 @@ function App() {
                   <input id="height" name="height" type="number" min="64" max="4096" step="1" defaultValue="1024" required />
                 </div>
               </div>
-              <button className="primary" type="submit">Create art <span aria-hidden="true">↗</span></button>
+              <button className="primary" type="submit">{canContinue ? 'Continue art' : 'Create art'} <span aria-hidden="true">↗</span></button>
             </fieldset>
             {busy && <button className="stop" type="button" onClick={() => requestRef.current?.abort()}>Stop drawing</button>}
           </form>

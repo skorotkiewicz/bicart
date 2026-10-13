@@ -14,6 +14,13 @@ export function validateSettings({ title, layers, width, height }) {
   return { title: title.trim(), layers, width, height }
 }
 
+export function canContinueArt(art, settings) {
+  if (!art || !settings || typeof settings.title !== 'string') return false
+  const layers = Number(settings.layers)
+  return settings.title.trim() === art.title && Number(settings.width) === art.width && Number(settings.height) === art.height &&
+    Number.isInteger(layers) && layers > art.layers.length && layers <= 30
+}
+
 function number(value, name, min = 0, max = 1000) {
   if (typeof value !== 'number' || !Number.isFinite(value) || value < min || value > max) {
     throw new Error(`Invalid ${name} in the layer response.`)
