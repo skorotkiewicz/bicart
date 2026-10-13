@@ -1,16 +1,30 @@
 # Bicart
 
-A small local-LLM art creator. Enter a title, choose a layer count and canvas size, then export the finished canvas as PNG.
+A small LLM art creator. Enter a title, choose a layer count and canvas size, then export the finished canvas as PNG.
 
 ## Run
 
-Dependencies are already installed in this checkout.
+Dependencies are already installed in this checkout. Create your private configuration:
+
+```sh
+cp .env.example .env
+```
+
+Fill in these fields in `.env`:
+
+```dotenv
+LLM_BASE_URL=
+LLM_MODEL=
+LLM_API_KEY=
+```
+
+`LLM_BASE_URL` is required. Set it to your OpenAI-compatible API base URL, including `/v1` if your server requires it. Set `LLM_MODEL` to the model ID, or leave it blank to discover the first model from `/models`. Leave `LLM_API_KEY` blank for servers without authentication.
 
 ```sh
 bun run dev
 ```
 
-Open the URL Vite prints. The LLM must be running at `http://192.168.0.124:8888/` with OpenAI-compatible `/v1/models` and `/v1/chat/completions` endpoints. Bicart discovers the first available model automatically.
+Open the URL Vite prints. Restart Vite after editing `.env`. Model changes also require rebuilding a production bundle.
 
 If dependencies need reinstalling, allow the required eight-hour download timeout:
 
@@ -30,9 +44,9 @@ The model returns JSON rectangles, ellipses, polygons, and lines, not generated 
 
 Artwork stays in memory. Reloading the page loses it, so export before leaving. A new run replaces the previous picture only after its first layer succeeds.
 
-## Local connection
+## LLM connection
 
-`ai` and `@ai-sdk/openai-compatible` make the generation calls. Vite proxies `/llm` to `http://192.168.0.124:8888/v1` during development and preview, avoiding browser CORS restrictions. Change the fixed target in `vite.config.js` to use another local server, and update the connection label in `src/App.jsx`.
+`ai` and `@ai-sdk/openai-compatible` make the generation calls. Vite proxies `/llm` to `LLM_BASE_URL` during development and preview, avoiding browser CORS restrictions. The proxy adds `LLM_API_KEY` as a bearer token server-side. Only `LLM_MODEL` is explicitly exposed to the client. Do not prefix the API key with `VITE_`, which would expose it in the browser bundle. Private env files are ignored by Git; `.env.example` is the shareable template.
 
 ```sh
 bun run test
@@ -41,4 +55,4 @@ bun run build
 bun run preview
 ```
 
-A static production host also needs a same-origin `/llm` reverse proxy to the LLM's `/v1` API. The build alone does not provide a backend. Keep this app local: exposing its proxy to the internet gives visitors access to your LLM server. No API key is configured for this local endpoint.
+A static production host also needs a same-origin `/llm` reverse proxy to the configured API base URL, with bearer authentication when required. The build alone does not provide a backend. Keep this app local: exposing its proxy to the internet gives visitors access to your LLM using your server-side credentials.

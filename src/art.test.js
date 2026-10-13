@@ -121,3 +121,20 @@ test('rejects invalid settings before sending data and reports missing models', 
   await assert.rejects(generateArt(options(server, { fetch: async () => Response.json({ data: [] }) })), /no model IDs/)
   await assert.rejects(generateArt(options(server, { fetch: async () => new Response('', { status: 503 }) })), /HTTP 503/)
 })
+
+test('uses the configured model without calling the models endpoint', async () => {
+  const server = mockServer([first, second])
+  const result = await generateArt(options(server, { modelId: '  configured-model  ' }))
+  assert.equal(result.modelId, 'configured-model')
+  assert.equal(server.requests.length, 2)
+  for (const request of server.requests) {
+    assert.equal(request.url, 'http://local/v1/chat/completions')
+    assert.equal(request.body.model, 'configured-model')
+  }
+})
+
+test('rejects a non-string model before sending requests', async () => {
+  const server = mockServer([])
+  await assert.rejects(generateArt(options(server, { modelId: 123 })), /model ID must be a string/)
+  assert.equal(server.requests.length, 0)
+})

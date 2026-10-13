@@ -37,6 +37,7 @@ function App() {
           height: Number(form.get('height')),
         },
         baseURL: `${window.location.origin}/llm`,
+        modelId: import.meta.env.LLM_MODEL,
         signal: controller.signal,
         onStatus: setStatus,
         onLayer: (nextArt) => {
@@ -50,7 +51,7 @@ function App() {
       if (controller.signal.aborted) {
         setStatus(`Stopped. ${completed} new ${completed === 1 ? 'layer' : 'layers'} completed.`)
       } else {
-        setError(cause.message || 'Could not reach the local LLM. Check that it is running.')
+        setError(cause.message || 'Could not reach the LLM. Check your .env settings.')
         setStatus(completed ? `Kept ${completed} completed layers. You can export them.` : 'No new layers created. Previous artwork is unchanged.')
       }
     } finally {
@@ -93,7 +94,7 @@ function App() {
         <aside className="settings">
           <p className="eyebrow">Your next picture</p>
           <h1>Give it a title.<br />See what unfolds.</h1>
-          <p className="intro">Your local LLM draws each layer, from the first color to the final detail.</p>
+          <p className="intro">Your LLM draws each layer, from the first color to the final detail.</p>
 
           <form onSubmit={createArt}>
             <fieldset disabled={busy}>
@@ -118,7 +119,7 @@ function App() {
             {busy && <button className="stop" type="button" onClick={() => requestRef.current?.abort()}>Stop drawing</button>}
           </form>
 
-          <div className="connection"><span aria-hidden="true" /> Local LLM · 192.168.0.124:8888</div>
+          <div className="connection"><span aria-hidden="true" /> LLM configured in .env</div>
           <p className="note">One request per layer. More layers take longer. Art stays in this tab until you export it.</p>
         </aside>
 
