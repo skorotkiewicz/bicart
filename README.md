@@ -41,13 +41,15 @@ timeout 28800s bun install
 - Use Hide/Show on each completed layer. Visibility affects both the preview and exported PNG; hidden layers are kept and remain part of the LLM composition context. New artwork starts with every layer visible.
 - Export PNG also works for a partially completed picture.
 
-The model returns JSON rectangles, ellipses, polygons, and lines, not generated photographs. Each request includes the title and the completed layers. Responses are validated before drawing. Model output is never executed as JavaScript or inserted as HTML. Invalid output stops the run and keeps completed layers. There are no automatic retries.
+The model returns JSON rectangles, ellipses, polygons, and lines, not generated photographs. Each request includes the title, completed layers, and a JSON Schema defining the supported shapes and bounds. AI SDK's `Output.object()` returns validated layer data; the drawing validator and first-layer background check still run before rendering. Model output is never executed as JavaScript or inserted as HTML. Invalid output stops the run and keeps completed layers. There are no automatic retries.
 
 Artwork stays in memory. Reloading the page loses it, so export before leaving. A new run replaces the previous picture only after its first layer succeeds.
 
 ## LLM connection
 
 `ai` and `@ai-sdk/openai-compatible` make the generation calls. Vite proxies `/llm` to `LLM_BASE_URL` during development and preview, avoiding browser CORS restrictions. The proxy adds `LLM_API_KEY` as a bearer token server-side. Only `LLM_MODEL` is explicitly exposed to the client. Do not prefix the API key with `VITE_`, which would expose it in the browser bundle. Private env files are ignored by Git; `.env.example` is the shareable template.
+
+The configured LLM server must support `response_format: json_schema`. Bicart requests strict structured output for every layer and does not silently fall back to plain text. Unsupported schema requests stop the run while keeping completed layers. The schema constrains drawing data, not the art style.
 
 ```sh
 bun run test

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { drawArt, parseLayer, validateSettings } from './art.js'
 import { generateArt } from './llm.js'
+import { layerSchema } from './layer-schema.js'
 
 const settings = { title: 'Cabin at sunset', layers: 2, width: 640, height: 480 }
 const background = { type: 'rect', x: 0, y: 0, width: 1000, height: 1000, color: '#edc986' }
@@ -15,6 +16,7 @@ function mockServer(outputs) {
     if (String(url).endsWith('/models')) return Response.json({ data: [{ id: 'test-model' }] })
     const output = outputs.shift()
     if (output instanceof Error) throw output
+    if (output instanceof Response) return output
     return Response.json({
       id: 'test', object: 'chat.completion', created: 0, model: 'test-model',
       choices: [{ index: 0, message: { role: 'assistant', content: typeof output === 'string' ? output : JSON.stringify(output) }, finish_reason: 'stop' }],
@@ -111,6 +113,12 @@ test('asks the SDK once per layer and supplies prior geometry', async () => {
   assert.equal(snapshots[0].layers.length, 1)
   assert.equal(snapshots[1].layers.length, 2)
   assert.equal(snapshots[1].width, 640)
+  for (const request of server.requests.slice(1)) {
+    assert.deepEqual(request.body.response_format, {
+      type: 'json_schema',
+      json_schema: { name: 'art_layer', strict: true, schema: await layerSchema.jsonSchema },
+    })
+  }
   const body = server.requests[2].body
   const prompt = JSON.parse(body.messages.find((message) => message.role === 'user').content)
   assert.equal(prompt.currentLayer, 2)
@@ -127,7 +135,7 @@ test('stopping prevents the next layer request', async () => {
 test('a failed layer keeps earlier snapshots and is not retried', async () => {
   const server = mockServer([first, 'broken JSON'])
   const snapshots = []
-  await assert.rejects(generateArt(options(server, { onLayer: (art) => snapshots.push(art) })), /Layer 2:.*valid layer JSON/)
+  await assert.rejects(generateArt(options(server, { onLayer: (art) => snapshots.push(art) })), /Layer 2:.*could not parse/)
   assert.equal(snapshots.length, 1)
   assert.equal(snapshots[0].layers.length, 1)
   assert.equal(server.requests.length, 3)
@@ -160,4 +168,45 @@ test('rejects a non-string model before sending requests', async () => {
   const server = mockServer([])
   await assert.rejects(generateArt(options(server, { modelId: 123 })), /model ID must be a string/)
   assert.equal(server.requests.length, 0)
+})
+
+test('the schema defines strict shape variants and normalizes validated layer data', async () => {
+  const schema = await layerSchema.jsonSchema
+  assert.deepEqual(schema.required, ['name', 'shapes'])
+  assert.equal(schema.additionalProperties, false)
+  assert.equal(schema.properties.shapes.maxItems, 40)
+  const variants = schema.properties.shapes.items.anyOf
+  assert.deepEqual(variants.map((variant) => variant.properties.type.enum[0]), ['rect', 'ellipse', 'polygon', 'line'])
+  for (const variant of variants) {
+    assert.equal(variant.additionalProperties, false)
+    assert.deepEqual(variant.required, Object.keys(variant.properties))
+    assert.equal(variant.properties.opacity.maximum, 1)
+  }
+  const result = layerSchema.validate({ ...first, name: ' Sky ', ignored: 'not drawing data' })
+  assert.equal(result.success, true)
+  assert.deepEqual(result.value, parseLayer(JSON.stringify(first)))
+})
+
+test('schema-invalid JSON stops the run and keeps completed layers', async () => {
+  for (const invalid of [
+    { name: 'Unsafe', shapes: [{ ...background, type: 'script' }] },
+    { name: 'Unsafe', shapes: [{ ...background, color: 'url(http://evil)' }] },
+    { name: 'Out of bounds', shapes: [{ ...background, x: 1001 }] },
+    { name: 'Empty', shapes: [] },
+  ]) {
+    const server = mockServer([first, invalid])
+    const snapshots = []
+    await assert.rejects(generateArt(options(server, { onLayer: (art) => snapshots.push(art) })), /Layer 2:.*did not match schema/)
+    assert.equal(snapshots.length, 1)
+    assert.equal(snapshots[0].layers.length, 1)
+    assert.equal(server.requests.length, 3)
+  }
+})
+
+test('servers without schema support fail without retries or plain-text fallback', async () => {
+  const server = mockServer([Response.json({ error: { message: 'json_schema is not supported' } }, { status: 400 })])
+  const snapshots = []
+  await assert.rejects(generateArt(options(server, { onLayer: (art) => snapshots.push(art) })), /Layer 1:.*json_schema is not supported/)
+  assert.equal(snapshots.length, 0)
+  assert.equal(server.requests.length, 2)
 })

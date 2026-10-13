@@ -91,6 +91,9 @@ test('requests through the Vite proxy use the configured model and server-side k
     assert.equal(requests[0].path, '/v1/chat/completions')
     assert.equal(requests[0].authorization, 'Bearer test-server-key')
     assert.equal(requests[0].body.model, 'configured-model')
+    assert.equal(requests[0].body.response_format.type, 'json_schema')
+    assert.equal(requests[0].body.response_format.json_schema.strict, true)
+    assert.equal(requests[0].body.response_format.json_schema.name, 'art_layer')
   } finally {
     await vite?.close()
     upstream.closeAllConnections()
