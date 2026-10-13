@@ -1,121 +1,162 @@
-import { useState } from 'react'
-import heroImg from './assets/hero.png'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
+import { useEffect, useRef, useState } from 'react'
+import { drawArt } from './art.js'
+import { generateArt } from './llm.js'
 import './App.css'
 
 function App() {
-  const [count, setCount] = useState(0)
+  const canvasRef = useRef(null)
+  const requestRef = useRef(null)
+  const [art, setArt] = useState(null)
+  const [busy, setBusy] = useState(false)
+  const [progress, setProgress] = useState({ completed: 0, total: 10 })
+  const [status, setStatus] = useState('Ready when you are.')
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    if (art && canvasRef.current) drawArt(canvasRef.current, art)
+  }, [art])
+
+  useEffect(() => () => requestRef.current?.abort(), [])
+
+  async function createArt(event) {
+    event.preventDefault()
+    if (requestRef.current) return
+    const form = new FormData(event.currentTarget)
+    const controller = new AbortController()
+    requestRef.current = controller
+    setBusy(true)
+    setProgress({ completed: 0, total: Number(form.get('layers')) })
+    setError('')
+    let completed = 0
+    try {
+      const result = await generateArt({
+        settings: {
+          title: form.get('title'),
+          layers: Number(form.get('layers')),
+          width: Number(form.get('width')),
+          height: Number(form.get('height')),
+        },
+        baseURL: `${window.location.origin}/llm`,
+        signal: controller.signal,
+        onStatus: setStatus,
+        onLayer: (nextArt) => {
+          completed = nextArt.layers.length
+          setProgress({ completed, total: nextArt.total })
+          setArt(nextArt)
+        },
+      })
+      setStatus(`Finished ${completed} layers with ${result.modelId.split('/').pop()}.`)
+    } catch (cause) {
+      if (controller.signal.aborted) {
+        setStatus(`Stopped. ${completed} new ${completed === 1 ? 'layer' : 'layers'} completed.`)
+      } else {
+        setError(cause.message || 'Could not reach the local LLM. Check that it is running.')
+        setStatus(completed ? `Kept ${completed} completed layers. You can export them.` : 'No new layers created. Previous artwork is unchanged.')
+      }
+    } finally {
+      requestRef.current = null
+      setBusy(false)
+    }
+  }
+
+  function exportPNG() {
+    if (!art || !canvasRef.current) return
+    setError('')
+    try {
+      const canvas = canvasRef.current
+      drawArt(canvas, art)
+      canvas.toBlob((blob) => {
+        if (!blob) {
+          setError('Could not encode the PNG. Try a smaller canvas.')
+          return
+        }
+        const url = URL.createObjectURL(blob)
+        const link = document.createElement('a')
+        link.href = url
+        link.download = `${art.title.replace(/[^a-z0-9_-]+/gi, '-').replace(/^-+|-+$/g, '').slice(0, 80) || 'bicart'}.png`
+        link.click()
+        setTimeout(() => URL.revokeObjectURL(url), 1000)
+      }, 'image/png')
+    } catch (cause) {
+      setError(`PNG export failed: ${cause.message}`)
+    }
+  }
 
   return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
-        </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.jsx</code> and save to test <code>HMR</code>
-          </p>
-        </div>
-        <button
-          type="button"
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
-        </button>
-      </section>
+    <main>
+      <header className="masthead">
+        <a className="brand" href="/" aria-label="Bicart home"><span aria-hidden="true">▧</span> bicart</a>
+        <span className="tagline">A little art, one layer at a time.</span>
+      </header>
 
-      <div className="ticks"></div>
+      <div className="studio">
+        <aside className="settings">
+          <p className="eyebrow">Your next picture</p>
+          <h1>Give it a title.<br />See what unfolds.</h1>
+          <p className="intro">Your local LLM draws each layer, from the first color to the final detail.</p>
 
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
-        </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
+          <form onSubmit={createArt}>
+            <fieldset disabled={busy}>
+              <label htmlFor="title">Art title</label>
+              <input id="title" name="title" placeholder="A small cabin under the northern lights" required maxLength={200} autoComplete="off" />
 
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
+              <label htmlFor="layers">Layers <span>1 to 30</span></label>
+              <input id="layers" name="layers" type="number" min="1" max="30" step="1" defaultValue="10" required />
+
+              <div className="dimensions">
+                <div>
+                  <label htmlFor="width">Width <span>px</span></label>
+                  <input id="width" name="width" type="number" min="64" max="4096" step="1" defaultValue="1024" required />
+                </div>
+                <div>
+                  <label htmlFor="height">Height <span>px</span></label>
+                  <input id="height" name="height" type="number" min="64" max="4096" step="1" defaultValue="1024" required />
+                </div>
+              </div>
+              <button className="primary" type="submit">Create art <span aria-hidden="true">↗</span></button>
+            </fieldset>
+            {busy && <button className="stop" type="button" onClick={() => requestRef.current?.abort()}>Stop drawing</button>}
+          </form>
+
+          <div className="connection"><span aria-hidden="true" /> Local LLM · 192.168.0.124:8888</div>
+          <p className="note">One request per layer. More layers take longer. Art stays in this tab until you export it.</p>
+        </aside>
+
+        <section className="workspace" aria-label="Artwork preview" aria-busy={busy}>
+          <div className="canvas-toolbar">
+            <div>
+              <h2>{art ? art.title : 'Your canvas'}</h2>
+              <p>{art ? `${art.width} × ${art.height} px · ${art.layers.length} / ${art.total} layers` : 'Start with a title on the left.'}</p>
+            </div>
+            <button className="export" type="button" disabled={!art} onClick={exportPNG}>Export PNG <span aria-hidden="true">↓</span></button>
+          </div>
+
+          <div className="canvas-stage">
+            {art ? (
+              <canvas ref={canvasRef} role="img" aria-label={`${art.title}, composed of ${art.layers.length} generated layers`} />
+            ) : (
+              <div className="blank-canvas">
+                <span className="canvas-mark" aria-hidden="true">▧</span>
+                <p>Nothing here. Yet.</p>
+                <span>Your first layer is a title away.</span>
+              </div>
+            )}
+          </div>
+
+          <div className="progress-area">
+            <p role="status" aria-live="polite">{busy && <span className="working-dot" aria-hidden="true" />}{status}</p>
+            {busy && <progress aria-label="Completed layers" max={progress.total} value={progress.completed} />}
+            {error && <p className="error" role="alert">{error}</p>}
+          </div>
+          {art && (
+            <ol className="layer-list" aria-label="Completed layers">
+              {art.layers.map((layer, index) => <li key={index}><span>{String(index + 1).padStart(2, '0')}</span>{layer.name}</li>)}
+            </ol>
+          )}
+        </section>
+      </div>
+      <footer>Text becomes shapes. Shapes become a picture.</footer>
+    </main>
   )
 }
 
