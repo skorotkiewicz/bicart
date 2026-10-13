@@ -79,6 +79,29 @@ test('draws validated shapes in layer order at the requested resolution', () => 
   assert.throws(() => drawArt({ getContext: () => null }, { width: 64, height: 64, layers: [] }))
 })
 
+test('visibility skips layers by index and can be restored without changing artwork', () => {
+  const colors = []
+  const ctx = new Proxy({}, {
+    get: () => () => {},
+    set: (_, key, value) => { if (key === 'fillStyle') colors.push(value); return true },
+  })
+  const canvas = { getContext: () => ctx }
+  const art = { width: 640, height: 480, layers: [parseLayer(JSON.stringify(first)), { ...second, name: first.name }] }
+  const original = JSON.stringify(art)
+  for (const [hidden, expected] of [
+    [[], ['#ffffff', '#edc986', '#fff']],
+    [[1], ['#ffffff', '#edc986']],
+    [[0], ['#ffffff', '#fff']],
+    [[0, 1], ['#ffffff']],
+    [[], ['#ffffff', '#edc986', '#fff']],
+  ]) {
+    colors.length = 0
+    drawArt(canvas, art, hidden)
+    assert.deepEqual(colors, expected)
+    assert.equal(JSON.stringify(art), original)
+  }
+})
+
 test('asks the SDK once per layer and supplies prior geometry', async () => {
   const server = mockServer([first, second])
   const snapshots = []

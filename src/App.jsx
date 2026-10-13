@@ -7,14 +7,15 @@ function App() {
   const canvasRef = useRef(null)
   const requestRef = useRef(null)
   const [art, setArt] = useState(null)
+  const [hiddenLayers, setHiddenLayers] = useState([])
   const [busy, setBusy] = useState(false)
   const [progress, setProgress] = useState({ completed: 0, total: 10 })
   const [status, setStatus] = useState('Ready when you are.')
   const [error, setError] = useState('')
 
   useEffect(() => {
-    if (art && canvasRef.current) drawArt(canvasRef.current, art)
-  }, [art])
+    if (art && canvasRef.current) drawArt(canvasRef.current, art, hiddenLayers)
+  }, [art, hiddenLayers])
 
   useEffect(() => () => requestRef.current?.abort(), [])
 
@@ -42,6 +43,7 @@ function App() {
         onStatus: setStatus,
         onLayer: (nextArt) => {
           completed = nextArt.layers.length
+          if (completed === 1) setHiddenLayers([])
           setProgress({ completed, total: nextArt.total })
           setArt(nextArt)
         },
@@ -65,7 +67,7 @@ function App() {
     setError('')
     try {
       const canvas = canvasRef.current
-      drawArt(canvas, art)
+      drawArt(canvas, art, hiddenLayers)
       canvas.toBlob((blob) => {
         if (!blob) {
           setError('Could not encode the PNG. Try a smaller canvas.')
@@ -134,7 +136,7 @@ function App() {
 
           <div className="canvas-stage">
             {art ? (
-              <canvas ref={canvasRef} role="img" aria-label={`${art.title}, composed of ${art.layers.length} generated layers`} />
+              <canvas ref={canvasRef} role="img" aria-label={`${art.title}, ${art.layers.length - hiddenLayers.length} visible layers of ${art.layers.length}`} />
             ) : (
               <div className="blank-canvas">
                 <span className="canvas-mark" aria-hidden="true">▧</span>
@@ -151,7 +153,22 @@ function App() {
           </div>
           {art && (
             <ol className="layer-list" aria-label="Completed layers">
-              {art.layers.map((layer, index) => <li key={index}><span>{String(index + 1).padStart(2, '0')}</span>{layer.name}</li>)}
+              {art.layers.map((layer, index) => (
+                <li key={index}>
+                  <button
+                    type="button"
+                    aria-label={`Layer ${index + 1}: ${layer.name}`}
+                    aria-pressed={!hiddenLayers.includes(index)}
+                    onClick={() => setHiddenLayers((hidden) => hidden.includes(index)
+                      ? hidden.filter((layerIndex) => layerIndex !== index)
+                      : [...hidden, index])}
+                  >
+                    <span className="layer-number">{String(index + 1).padStart(2, '0')}</span>
+                    <span className="layer-name">{layer.name}</span>
+                    <span className="layer-action">{hiddenLayers.includes(index) ? 'Show' : 'Hide'}</span>
+                  </button>
+                </li>
+              ))}
             </ol>
           )}
         </section>

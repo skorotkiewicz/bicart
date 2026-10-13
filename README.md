@@ -38,6 +38,7 @@ timeout 28800s bun install
 - Layers: 1 to 30, default 10. Each layer makes one sequential LLM request.
 - Width and height: 64 to 4096 pixels each, default 1024 × 1024.
 - Watch completed layers appear, or stop drawing at any time.
+- Use Hide/Show on each completed layer. Visibility affects both the preview and exported PNG; hidden layers are kept and remain part of the LLM composition context. New artwork starts with every layer visible.
 - Export PNG also works for a partially completed picture.
 
 The model returns JSON rectangles, ellipses, polygons, and lines, not generated photographs. Each request includes the title and the completed layers. Responses are validated before drawing. Model output is never executed as JavaScript or inserted as HTML. Invalid output stops the run and keeps completed layers. There are no automatic retries.

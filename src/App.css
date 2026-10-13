@@ -40,8 +40,12 @@ h2 { font-weight: 600; font-size: 15px; margin: 0 0 4px; overflow-wrap: anywhere
 progress { display: block; width: 100%; height: 6px; margin-top: 12px; accent-color: var(--accent); }
 .error { color: #a22d21; padding: 12px; background: #fcece7; border: 1px solid #ebc4b9; border-radius: 5px; margin-top: 12px; }
 .layer-list { list-style: none; padding: 0; margin: 18px 0 0; display: flex; flex-wrap: wrap; gap: 7px; }
-.layer-list li { border: 1px solid var(--border); padding: 6px 9px; border-radius: 4px; font-size: 11px; overflow-wrap: anywhere; max-width: 100%; }
-.layer-list span { color: var(--accent); margin-right: 7px; font-variant-numeric: tabular-nums; }
+.layer-list li { max-width: 100%; }
+.layer-list button { display: flex; align-items: center; gap: 8px; max-width: 100%; padding: 8px 9px; border-radius: 4px; font-size: 11px; font-weight: 400; text-align: left; }
+.layer-list button[aria-pressed='false'] { border-style: dashed; color: var(--muted); }
+.layer-number { color: var(--accent); font-variant-numeric: tabular-nums; flex-shrink: 0; }
+.layer-name { min-width: 0; overflow-wrap: anywhere; }
+.layer-action { color: var(--muted); font-weight: 600; flex-shrink: 0; }
 footer { border-top: 1px solid var(--border); padding: 20px 0 28px; }
 @keyframes pulse { from { opacity: .3; } to { opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .working-dot { animation: none; } }

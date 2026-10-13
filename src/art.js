@@ -69,7 +69,7 @@ export function parseLayer(text) {
   return { name: layer.name.trim(), shapes }
 }
 
-export function drawArt(canvas, art) {
+export function drawArt(canvas, art, hiddenLayers = []) {
   canvas.width = art.width
   canvas.height = art.height
   const ctx = canvas.getContext('2d')
@@ -78,7 +78,8 @@ export function drawArt(canvas, art) {
   ctx.fillRect(0, 0, art.width, art.height)
   ctx.save()
   ctx.scale(art.width / 1000, art.height / 1000)
-  for (const layer of art.layers) {
+  for (const [index, layer] of art.layers.entries()) {
+    if (hiddenLayers.includes(index)) continue
     for (const shape of layer.shapes) {
       ctx.globalAlpha = shape.opacity
       ctx.fillStyle = shape.color
