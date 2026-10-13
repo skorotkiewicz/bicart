@@ -13,7 +13,7 @@ input { width: 100%; padding: 12px; border: 1px solid #cfcabf; border-radius: 5p
 input::placeholder { color: #77736b; }
 input:disabled { opacity: .65; }
 .dimensions { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-button { border: 1px solid var(--border); border-radius: 5px; padding: 11px 16px; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; background: #fffdf9; color: var(--ink); }
+button, .export-menu summary { border: 1px solid var(--border); border-radius: 5px; padding: 11px 16px; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; background: #fffdf9; color: var(--ink); }
 button:hover:not(:disabled) { border-color: var(--ink); }
 button:disabled { opacity: .45; cursor: not-allowed; }
 .primary { width: 100%; background: var(--accent); color: white; border-color: var(--accent); display: flex; justify-content: space-between; font-size: 14px; padding: 13px 16px; }
@@ -28,6 +28,14 @@ h2 { font-weight: 600; font-size: 15px; margin: 0 0 4px; overflow-wrap: anywhere
 .canvas-toolbar p { color: var(--muted); font-size: 12px; }
 .export { white-space: nowrap; }
 .export span { margin-left: 8px; }
+.export-menu { position: relative; flex-shrink: 0; }
+.export-menu summary { list-style: none; }
+.export-menu summary::-webkit-details-marker { display: none; }
+.export-menu summary:hover { border-color: var(--ink); }
+.export-options { position: absolute; right: 0; top: calc(100% + 6px); z-index: 3; min-width: 168px; padding: 6px; background: #fffdf9; border: 1px solid var(--border); border-radius: 5px; box-shadow: 0 5px 18px #322b1920; }
+.export-options button { display: block; width: 100%; text-align: left; border: 0; }
+.export-options button:hover:not(:disabled) { background: #f0ece3; }
+.export-options .import-action { border-top: 1px solid var(--border); border-radius: 0; margin-top: 4px; }
 .canvas-stage { background: #e9e5dc; border: 1px solid var(--border); border-radius: 6px; padding: 28px; min-height: 460px; display: flex; align-items: center; justify-content: center; }
 .canvas-stage canvas { display: block; max-width: 100%; max-height: 650px; width: auto; height: auto; object-fit: contain; box-shadow: 0 3px 14px #322b1915; }
 .blank-canvas { width: 100%; max-width: 460px; aspect-ratio: 1; background: #fffdf9; border: 1px solid #ded9ce; display: flex; align-items: center; justify-content: center; flex-direction: column; color: var(--muted); }

@@ -1,6 +1,6 @@
 # Bicart
 
-A small LLM art creator. Enter a title, choose a layer count and canvas size, then export the finished canvas as PNG.
+A small LLM art creator. Enter a title, choose a layer count and canvas size, then export PNG, SVG, or a layered JSON project.
 
 ## Run
 
@@ -38,12 +38,15 @@ timeout 28800s bun install
 - Layers: 1 to 30, default 10. Each layer makes one sequential LLM request.
 - Width and height: 64 to 4096 pixels each, default 1024 × 1024.
 - Watch completed layers appear, or stop drawing at any time.
-- Use Hide/Show on each completed layer. Visibility affects both the preview and exported PNG; hidden layers are kept and remain part of the LLM composition context. New artwork starts with every layer visible.
-- Export PNG also works for a partially completed picture.
+- Use Hide/Show on each completed layer. Visibility affects the preview, PNG, and SVG; hidden layers are kept and remain part of the LLM composition context. New artwork starts with every layer visible.
+- Open the Export dropdown for PNG, SVG, Export JSON, or Import JSON. All export formats work with partially completed artwork.
+- SVG keeps shapes in named layer groups and preserves hidden layers without rendering them.
+- JSON saves every layer, visibility settings, title, canvas size, and the requested layer count. Import restores these settings and validates the entire file before replacing the picture.
+- JSON import accepts Bicart version 1 projects up to 4 MB, asks before replacing existing artwork, and is unavailable during generation.
 
 The model returns JSON rectangles, ellipses, polygons, and lines, not generated photographs. Each request includes the title, completed layers, and a JSON Schema defining the supported shapes and bounds. AI SDK's `Output.object()` returns validated layer data; the drawing validator and first-layer background check still run before rendering. Model output is never executed as JavaScript or inserted as HTML. Invalid output stops the run and keeps completed layers. There are no automatic retries.
 
-Artwork stays in memory. Reloading the page loses it, so export before leaving. A new run replaces the previous picture only after its first layer succeeds.
+Artwork stays in memory. Reloading the page loses it, so export JSON before leaving if you want to restore the layers later. PNG and SVG exports do not import back into Bicart. A new run replaces the previous picture only after its first layer succeeds.
 
 ## LLM connection
 

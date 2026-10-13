@@ -1,14 +1,19 @@
 import { useEffect, useRef, useState } from 'react'
 import { drawArt } from './art.js'
+import { createSVG, exportProject, importProject, MAX_PROJECT_BYTES } from './files.js'
 import { generateArt } from './llm.js'
 import './App.css'
 
 function App() {
   const canvasRef = useRef(null)
   const requestRef = useRef(null)
+  const formRef = useRef(null)
+  const menuRef = useRef(null)
+  const fileRef = useRef(null)
   const [art, setArt] = useState(null)
   const [hiddenLayers, setHiddenLayers] = useState([])
   const [busy, setBusy] = useState(false)
+  const [importing, setImporting] = useState(false)
   const [progress, setProgress] = useState({ completed: 0, total: 10 })
   const [status, setStatus] = useState('Ready when you are.')
   const [error, setError] = useState('')
@@ -19,9 +24,17 @@ function App() {
 
   useEffect(() => () => requestRef.current?.abort(), [])
 
+  useEffect(() => {
+    function closeOnOutsideClick(event) {
+      if (menuRef.current && !menuRef.current.contains(event.target)) menuRef.current.open = false
+    }
+    document.addEventListener('pointerdown', closeOnOutsideClick)
+    return () => document.removeEventListener('pointerdown', closeOnOutsideClick)
+  }, [])
+
   async function createArt(event) {
     event.preventDefault()
-    if (requestRef.current) return
+    if (requestRef.current || importing) return
     const form = new FormData(event.currentTarget)
     const controller = new AbortController()
     requestRef.current = controller
@@ -62,26 +75,65 @@ function App() {
     }
   }
 
-  function exportPNG() {
-    if (!art || !canvasRef.current) return
+  function download(blob, extension) {
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `${art.title.replace(/[^a-z0-9_-]+/gi, '-').replace(/^-+|-+$/g, '').slice(0, 80) || 'bicart'}.${extension}`
+    link.click()
+    setTimeout(() => URL.revokeObjectURL(url), 1000)
+  }
+
+  function exportArt(format) {
+    menuRef.current.open = false
+    if (!art) return
     setError('')
     try {
-      const canvas = canvasRef.current
-      drawArt(canvas, art, hiddenLayers)
-      canvas.toBlob((blob) => {
-        if (!blob) {
-          setError('Could not encode the PNG. Try a smaller canvas.')
-          return
-        }
-        const url = URL.createObjectURL(blob)
-        const link = document.createElement('a')
-        link.href = url
-        link.download = `${art.title.replace(/[^a-z0-9_-]+/gi, '-').replace(/^-+|-+$/g, '').slice(0, 80) || 'bicart'}.png`
-        link.click()
-        setTimeout(() => URL.revokeObjectURL(url), 1000)
-      }, 'image/png')
+      if (format === 'svg') {
+        download(new Blob([createSVG(art, hiddenLayers)], { type: 'image/svg+xml' }), 'svg')
+      } else if (format === 'json') {
+        download(new Blob([exportProject(art, hiddenLayers)], { type: 'application/json' }), 'json')
+      } else {
+        const canvas = canvasRef.current
+        drawArt(canvas, art, hiddenLayers)
+        canvas.toBlob((blob) => {
+          if (!blob) {
+            setError('Could not encode the PNG. Try a smaller canvas.')
+            return
+          }
+          download(blob, 'png')
+        }, 'image/png')
+      }
     } catch (cause) {
-      setError(`PNG export failed: ${cause.message}`)
+      setError(`${format.toUpperCase()} export failed: ${cause.message}`)
+    }
+  }
+
+  async function importJSON(event) {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (!file || requestRef.current || importing) return
+    setImporting(true)
+    setError('')
+    setStatus('Reading JSON project…')
+    try {
+      if (file.size > MAX_PROJECT_BYTES) throw new Error('Project files must be no larger than 4 MB.')
+      const project = importProject(await file.text())
+      if (art && !window.confirm('Replace the current artwork? Export JSON first if you need to keep it.')) {
+        setStatus('Import canceled. Current artwork is unchanged.')
+        return
+      }
+      setArt(project.art)
+      setHiddenLayers(project.hiddenLayers)
+      for (const [name, value] of Object.entries({ title: project.art.title, layers: project.art.total, width: project.art.width, height: project.art.height })) {
+        formRef.current.elements.namedItem(name).value = value
+      }
+      setStatus('Imported JSON project.')
+    } catch (cause) {
+      setError(`JSON import failed: ${cause.message}`)
+      setStatus('Import failed. Current artwork is unchanged.')
+    } finally {
+      setImporting(false)
     }
   }
 
@@ -98,8 +150,8 @@ function App() {
           <h1>Give it a title.<br />See what unfolds.</h1>
           <p className="intro">Your LLM draws each layer, from the first color to the final detail.</p>
 
-          <form onSubmit={createArt}>
-            <fieldset disabled={busy}>
+          <form ref={formRef} onSubmit={createArt}>
+            <fieldset disabled={busy || importing}>
               <label htmlFor="title">Art title</label>
               <input id="title" name="title" placeholder="A small cabin under the northern lights" required maxLength={200} autoComplete="off" />
 
@@ -125,13 +177,38 @@ function App() {
           <p className="note">One request per layer. More layers take longer. Art stays in this tab until you export it.</p>
         </aside>
 
-        <section className="workspace" aria-label="Artwork preview" aria-busy={busy}>
+        <section className="workspace" aria-label="Artwork preview" aria-busy={busy || importing}>
           <div className="canvas-toolbar">
             <div>
               <h2>{art ? art.title : 'Your canvas'}</h2>
               <p>{art ? `${art.width} × ${art.height} px · ${art.layers.length} / ${art.total} layers` : 'Start with a title on the left.'}</p>
             </div>
-            <button className="export" type="button" disabled={!art} onClick={exportPNG}>Export PNG <span aria-hidden="true">↓</span></button>
+            <details
+              ref={menuRef}
+              className="export-menu"
+              onBlur={(event) => {
+                if (!event.currentTarget.contains(event.relatedTarget)) event.currentTarget.open = false
+              }}
+              onKeyDown={(event) => {
+                if (event.key === 'Escape') {
+                  event.preventDefault()
+                  event.currentTarget.open = false
+                  event.currentTarget.querySelector('summary').focus()
+                }
+              }}
+            >
+              <summary className="export">Export <span aria-hidden="true">⌄</span></summary>
+              <div className="export-options" role="group" aria-label="Artwork file actions">
+                <button type="button" disabled={!art} onClick={() => exportArt('png')}>Export PNG</button>
+                <button type="button" disabled={!art} onClick={() => exportArt('svg')}>Export SVG</button>
+                <button type="button" disabled={!art} onClick={() => exportArt('json')}>Export JSON</button>
+                <button type="button" className="import-action" disabled={busy || importing} onClick={() => {
+                  menuRef.current.open = false
+                  fileRef.current.click()
+                }}>Import JSON</button>
+              </div>
+            </details>
+            <input ref={fileRef} type="file" accept="application/json,.json" aria-label="Import JSON project" hidden disabled={busy || importing} onChange={importJSON} />
           </div>
 
           <div className="canvas-stage">
