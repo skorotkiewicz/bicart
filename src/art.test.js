@@ -210,3 +210,88 @@ test('servers without schema support fail without retries or plain-text fallback
   assert.equal(snapshots.length, 0)
   assert.equal(server.requests.length, 2)
 })
+
+function savedLayers() {
+  return [parseLayer(JSON.stringify(first)), ...Array.from({ length: 7 }, (_, index) => ({ ...parseLayer(JSON.stringify(second)), name: `Saved ${index + 2}` }))]
+}
+
+function requestPrompt(request) {
+  return JSON.parse(request.body.messages.find((message) => message.role === 'user').content)
+}
+
+test('resumes at layer 9 without regenerating earlier layers and sends feedback only once', async () => {
+  const previousLayers = savedLayers()
+  const original = JSON.stringify(previousLayers)
+  const server = mockServer([second, second])
+  const snapshots = []
+  const feedback = 'Generation coordination is unavailable. '.repeat(30)
+  const result = await generateArt(options(server, {
+    settings: { ...settings, layers: 10 }, modelId: 'configured-model', previousLayers, retryFeedback: feedback,
+    onLayer: (art) => snapshots.push(art),
+  }))
+  assert.equal(server.requests.length, 2)
+  assert.deepEqual(snapshots.map((art) => art.layers.length), [9, 10])
+  assert.deepEqual(result.layers.slice(0, 8), previousLayers)
+  assert.equal(JSON.stringify(previousLayers), original)
+  const ninth = requestPrompt(server.requests[0])
+  const tenth = requestPrompt(server.requests[1])
+  assert.equal(ninth.currentLayer, 9)
+  assert.equal(ninth.totalLayers, 10)
+  assert.deepEqual(ninth.previousLayers, previousLayers)
+  assert.equal(ninth.retryFeedback, feedback.slice(0, 500))
+  assert.equal(tenth.currentLayer, 10)
+  assert.equal(tenth.previousLayers.length, 9)
+  assert.equal(tenth.retryFeedback, undefined)
+})
+
+test('a later failure can resume from the most recent completed layer', async () => {
+  const failedServer = mockServer([second, Response.json({ error: { message: 'Generation coordination is unavailable' } }, { status: 503 })])
+  let latest
+  let failure
+  await assert.rejects(generateArt(options(failedServer, {
+    settings: { ...settings, layers: 10 }, modelId: 'configured-model', previousLayers: savedLayers(),
+    onLayer: (art) => { latest = art },
+  })), (error) => { failure = error; return /Layer 10: Generation coordination is unavailable/.test(error.message) })
+  assert.equal(latest.layers.length, 9)
+  const retryServer = mockServer([second])
+  const result = await generateArt(options(retryServer, {
+    settings: { ...settings, layers: 10 }, modelId: 'configured-model', previousLayers: latest.layers, retryFeedback: failure.retryFeedback,
+  }))
+  assert.equal(retryServer.requests.length, 1)
+  assert.equal(requestPrompt(retryServer.requests[0]).currentLayer, 10)
+  assert.equal(requestPrompt(retryServer.requests[0]).retryFeedback, 'Generation coordination is unavailable')
+  assert.equal(result.layers.length, 10)
+})
+
+test('schema failures expose the drawing error as a short retry note', async () => {
+  const server = mockServer([first, { ...second, shapes: [{ ...second.shapes[0], x: 1001 }] }])
+  await assert.rejects(generateArt(options(server)), (error) => {
+    assert.match(error.message, /Layer 2:.*did not match schema/)
+    assert.equal(error.retryFeedback, 'Invalid x in the layer response.')
+    return true
+  })
+})
+
+test('resume inputs are validated before making requests', async () => {
+  for (const overrides of [
+    { previousLayers: null }, { previousLayers: 'not layers' },
+    { previousLayers: [first, second] }, { previousLayers: [{}] },
+    { retryFeedback: { message: 'not a string' } },
+  ]) {
+    const server = mockServer([])
+    await assert.rejects(generateArt(options(server, overrides)))
+    assert.equal(server.requests.length, 0)
+  }
+})
+
+test('stopping a resumed run prevents later requests and preserves saved layers', async () => {
+  const previousLayers = savedLayers()
+  const server = mockServer([second, second])
+  const controller = new AbortController()
+  await assert.rejects(generateArt(options(server, {
+    settings: { ...settings, layers: 10 }, modelId: 'configured-model', previousLayers,
+    signal: controller.signal, onLayer: () => controller.abort(),
+  })), { name: 'AbortError' })
+  assert.equal(server.requests.length, 1)
+  assert.equal(previousLayers.length, 8)
+})

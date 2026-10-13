@@ -47,6 +47,7 @@ h2 { font-weight: 600; font-size: 15px; margin: 0 0 4px; overflow-wrap: anywhere
 .working-dot { width: 7px; height: 7px; flex-shrink: 0; background: var(--accent); border-radius: 50%; animation: pulse 1s ease-in-out infinite alternate; }
 progress { display: block; width: 100%; height: 6px; margin-top: 12px; accent-color: var(--accent); }
 .error { color: #a22d21; padding: 12px; background: #fcece7; border: 1px solid #ebc4b9; border-radius: 5px; margin-top: 12px; }
+.retry-button { border: 0; background: transparent; color: inherit; padding: 2px 0; min-height: 24px; font: inherit; text-decoration: underline; }
 .layer-list { list-style: none; padding: 0; margin: 18px 0 0; display: flex; flex-wrap: wrap; gap: 7px; }
 .layer-list li { max-width: 100%; }
 .layer-list button { display: flex; align-items: center; gap: 8px; max-width: 100%; padding: 8px 9px; border-radius: 4px; font-size: 11px; font-weight: 400; text-align: left; }

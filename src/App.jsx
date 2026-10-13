@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { drawArt } from './art.js'
+import { drawArt, validateSettings } from './art.js'
 import { createSVG, exportProject, importProject, MAX_PROJECT_BYTES } from './files.js'
 import { generateArt } from './llm.js'
 import './App.css'
@@ -17,6 +17,14 @@ function App() {
   const [progress, setProgress] = useState({ completed: 0, total: 10 })
   const [status, setStatus] = useState('Ready when you are.')
   const [error, setError] = useState('')
+  const retry = progress.retry ?? (art && art.layers.length < art.total && error.startsWith(`Layer ${art.layers.length + 1}:`)
+    ? {
+      settings: { title: art.title, layers: art.total, width: art.width, height: art.height },
+      previousLayers: art.layers,
+      retryFeedback: error.slice(0, 500),
+      message: error,
+    }
+    : null)
 
   useEffect(() => {
     if (art && canvasRef.current) drawArt(canvasRef.current, art, hiddenLayers)
@@ -36,26 +44,42 @@ function App() {
     event.preventDefault()
     if (requestRef.current || importing) return
     const form = new FormData(event.currentTarget)
+    try {
+      const settings = validateSettings({
+        title: form.get('title'),
+        layers: Number(form.get('layers')),
+        width: Number(form.get('width')),
+        height: Number(form.get('height')),
+      })
+      await runGeneration(settings)
+    } catch (cause) {
+      if (retry && !progress.retry) setProgress({ ...progress, retry })
+      setError(cause.message)
+    }
+  }
+
+  async function runGeneration(settings, previousLayers = [], retryFeedback = '') {
+    if (requestRef.current || importing) return
+    for (const [name, value] of Object.entries(settings)) formRef.current.elements.namedItem(name).value = value
     const controller = new AbortController()
     requestRef.current = controller
     setBusy(true)
-    setProgress({ completed: 0, total: Number(form.get('layers')) })
+    setProgress({ completed: previousLayers.length, total: settings.layers })
     setError('')
-    let completed = 0
+    let layers = previousLayers
+    let completed = layers.length
     try {
       const result = await generateArt({
-        settings: {
-          title: form.get('title'),
-          layers: Number(form.get('layers')),
-          width: Number(form.get('width')),
-          height: Number(form.get('height')),
-        },
+        settings,
+        previousLayers,
+        retryFeedback,
         baseURL: `${window.location.origin}/llm`,
         modelId: import.meta.env.LLM_MODEL,
         signal: controller.signal,
         onStatus: setStatus,
         onLayer: (nextArt) => {
-          completed = nextArt.layers.length
+          layers = nextArt.layers
+          completed = layers.length
           if (completed === 1) setHiddenLayers([])
           setProgress({ completed, total: nextArt.total })
           setArt(nextArt)
@@ -64,9 +88,14 @@ function App() {
       setStatus(`Finished ${completed} layers with ${result.modelId.split('/').pop()}.`)
     } catch (cause) {
       if (controller.signal.aborted) {
-        setStatus(`Stopped. ${completed} new ${completed === 1 ? 'layer' : 'layers'} completed.`)
+        setStatus(`Stopped. ${completed} of ${settings.layers} layers completed.`)
       } else {
-        setError(cause.message || 'Could not reach the LLM. Check your .env settings.')
+        const message = cause.message || 'Could not reach the LLM. Check your .env settings.'
+        setProgress({
+          completed,
+          total: settings.layers,
+          retry: { settings, previousLayers: layers, retryFeedback: cause.retryFeedback || message.slice(0, 500), message },
+        })
         setStatus(completed ? `Kept ${completed} completed layers. You can export them.` : 'No new layers created. Previous artwork is unchanged.')
       }
     } finally {
@@ -87,6 +116,7 @@ function App() {
   function exportArt(format) {
     menuRef.current.open = false
     if (!art) return
+    if (retry && !progress.retry) setProgress({ ...progress, retry })
     setError('')
     try {
       if (format === 'svg') {
@@ -114,6 +144,7 @@ function App() {
     event.target.value = ''
     if (!file || requestRef.current || importing) return
     setImporting(true)
+    if (retry && !progress.retry) setProgress({ ...progress, retry })
     setError('')
     setStatus('Reading JSON project…')
     try {
@@ -123,6 +154,7 @@ function App() {
         setStatus('Import canceled. Current artwork is unchanged.')
         return
       }
+      setProgress({ completed: project.art.layers.length, total: project.art.total })
       setArt(project.art)
       setHiddenLayers(project.hiddenLayers)
       for (const [name, value] of Object.entries({ title: project.art.title, layers: project.art.total, width: project.art.width, height: project.art.height })) {
@@ -226,7 +258,15 @@ function App() {
           <div className="progress-area">
             <p role="status" aria-live="polite">{busy && <span className="working-dot" aria-hidden="true" />}{status}</p>
             {busy && <progress aria-label="Completed layers" max={progress.total} value={progress.completed} />}
-            {error && <p className="error" role="alert">{error}</p>}
+            {error && error !== retry?.message && <p className="error" role="alert">{error}</p>}
+            {retry && (
+              <p className="error" role="alert">
+                {retry.message}{' '}
+                <button className="retry-button" type="button" disabled={busy || importing}
+                  aria-label={`Retry layer ${retry.previousLayers.length + 1}`}
+                  onClick={() => runGeneration(retry.settings, retry.previousLayers, retry.retryFeedback)}>(try again)</button>
+              </p>
+            )}
           </div>
           {art && (
             <ol className="layer-list" aria-label="Completed layers">

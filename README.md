@@ -40,6 +40,8 @@ timeout 28800s bun install
 - Layers: 1 to 30, default 10. Each layer makes one sequential LLM request.
 - Width and height: 64 to 4096 pixels each, default 1024 × 1024.
 - Watch completed layers appear, or stop drawing at any time.
+- If generation fails, click `(try again)` beside the error. It resumes the failed layer using the original title, canvas size, and completed layers, without redrawing earlier layers or resetting their visibility. The next request includes a short diagnostic note; later successful layers do not keep repeating it.
+- The retry target stays in this tab. Exporting or a canceled import keeps it; starting a new picture or successfully importing a project clears it. Reloading the page loses the retry context.
 - Use Hide/Show on each completed layer. Visibility affects the preview, PNG, and SVG; hidden layers are kept and remain part of the LLM composition context. New artwork starts with every layer visible.
 - Open the Export dropdown for PNG, SVG, Export JSON, or Import JSON. All export formats work with partially completed artwork.
 - SVG keeps shapes in named layer groups and preserves hidden layers without rendering them.
